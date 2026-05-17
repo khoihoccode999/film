@@ -1,0 +1,71 @@
+@startuml Get Categories Flow
+
+skinparam SequenceMessageAlignment center
+skinparam SequenceBoxBackgroundColor white
+skinparam SequenceBoxBorderColor black
+skinparam NoteBackgroundColor lightyellow
+skinparam NoteBorderColor black
+skinparam ParticipantBackgroundColor white
+skinparam ParticipantBorderColor black
+
+title Get Categories Flow (GraphQL)
+
+actor "User" as user
+participant "categoryPage:CategoryPage" as categoryPage <<Page>>
+participant "categoryResolver:CategoryResolver" as categoryResolver <<Resolver>>
+participant "categoryService:CategoryService" as categoryService <<Service>>
+participant "redisService:RedisService" as redisService <<Service>>
+participant "categoryRepo:CategoryRepository" as categoryRepo <<Repository>>
+database "mongoDB" as mongoDB
+
+user -> categoryPage : Navigate to categories list page
+activate categoryPage
+
+categoryPage -> categoryResolver : Query categories(input: GetCategoriesInput)
+activate categoryResolver
+
+categoryResolver -> categoryService : getCategories(input)
+activate categoryService
+
+categoryService -> redisService : get(cacheKey)
+activate redisService
+redisService --> categoryService : Return cached data (if exists)
+deactivate redisService
+
+alt data from cache exists
+    categoryService --> categoryResolver : Return cached data
+else no cached data
+    categoryService -> categoryRepo : find(filterQuery, query)
+    activate categoryRepo
+    categoryRepo -> mongoDB : find categories
+    activate mongoDB
+    mongoDB --> categoryRepo : Return categories
+    deactivate mongoDB
+    categoryRepo --> categoryService : Return categories
+    deactivate categoryRepo
+
+    categoryService -> categoryRepo : count(filterQuery)
+    activate categoryRepo
+    categoryRepo -> mongoDB : count categories
+    activate mongoDB
+    mongoDB --> categoryRepo : Return count
+    deactivate mongoDB
+    categoryRepo --> categoryService : Return count
+    deactivate categoryRepo
+
+    categoryService -> redisService : set(cacheKey, result, expiry)
+    activate redisService
+    redisService --> categoryService : Confirm cache set
+    deactivate redisService
+
+    categoryService --> categoryResolver : Return result {data, total, count}
+end
+
+categoryResolver --> categoryPage : Return categories
+categoryPage --> user : Show categories list
+
+deactivate categoryService
+deactivate categoryResolver
+deactivate categoryPage
+
+@enduml

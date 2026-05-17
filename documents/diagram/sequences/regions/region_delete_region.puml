@@ -1,0 +1,58 @@
+@startuml Delete Region Flow
+
+skinparam SequenceMessageAlignment center
+skinparam SequenceBoxBackgroundColor white
+skinparam SequenceBoxBorderColor black
+skinparam NoteBackgroundColor lightyellow
+skinparam NoteBorderColor black
+skinparam ParticipantBackgroundColor white
+skinparam ParticipantBorderColor black
+
+title Delete Region Flow (GraphQL)
+
+actor "Admin User" as adminUser
+participant "regionPage:RegionPage" as regionPage <<Page>>
+participant "regionResolver:RegionResolver" as regionResolver <<Resolver>>
+participant "jwtStrategy:JwtGqlStrategy" as jwtStrategy <<Strategy>>
+participant "rolesGuard:RolesGuard" as rolesGuard <<Guard>>
+participant "regionService:RegionService" as regionService <<Service>>
+participant "regionRepo:RegionRepository" as regionRepo <<Repository>>
+database "MongoDB" as mongoDB
+
+adminUser -> regionPage : Initiates region deletion
+activate regionPage
+
+regionPage -> regionResolver : Mutation deleteRegion(input: DeleteRegionInput)
+activate regionResolver
+
+regionResolver -> jwtStrategy : Validate JWT token
+activate jwtStrategy
+jwtStrategy --> regionResolver : Return UserJwt
+deactivate jwtStrategy
+
+regionResolver -> rolesGuard : Check admin role permissions
+activate rolesGuard
+rolesGuard --> regionResolver : Validate admin role
+deactivate rolesGuard
+
+regionResolver -> regionService : deleteRegion({id})
+activate regionService
+
+regionService -> regionRepo : deleteOne({_id})
+activate regionRepo
+regionRepo -> mongoDB : Delete region by _id
+activate mongoDB
+mongoDB --> regionRepo : Return delete result
+deactivate mongoDB
+regionRepo --> regionService : Return delete result
+deactivate regionRepo
+
+regionService --> regionResolver : Return 1 (success)
+regionResolver --> regionPage : Return 1 (success)
+regionPage --> adminUser : Show delete result
+
+deactivate regionService
+deactivate regionResolver
+deactivate regionPage
+
+@enduml

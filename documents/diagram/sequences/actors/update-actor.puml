@@ -1,0 +1,77 @@
+@startuml Update Actor Flow
+
+skinparam SequenceMessageAlignment center
+skinparam SequenceBoxBackgroundColor white
+skinparam SequenceBoxBorderColor black
+skinparam NoteBackgroundColor lightyellow
+skinparam NoteBorderColor black
+skinparam ParticipantBackgroundColor white
+skinparam ParticipantBorderColor black
+
+title Update Actor Flow (GraphQL)
+
+actor "Admin User" as adminUser
+participant "actorPage:EditActorPage" as actorPage <<Page>>
+participant "actorForm:ActorForm" as actorForm <<Component>>
+participant "actorResolver:ActorResolver" as actorResolver <<Resolver>>
+participant "jwtStrategy:JwtGqlStrategy" as jwtStrategy <<Strategy>>
+participant "rolesGuard:RolesGuard" as rolesGuard <<Guard>>
+participant "actorService:ActorService" as actorService <<Service>>
+participant "actorRepo:ActorRepository" as actorRepo <<Repository>>
+database "MongoDB" as mongoDB
+
+adminUser -> actorPage : Navigate to actor edit page
+activate actorPage
+actorPage -> actorForm : Display form with existing data
+activate actorForm
+adminUser -> actorForm : Updates actor fields
+
+actorForm -> actorResolver : Mutation updateActor(input: UpdateActorInput)
+activate actorResolver
+
+actorResolver -> jwtStrategy : Validate JWT token
+activate jwtStrategy
+jwtStrategy --> actorResolver : Return UserJwt
+deactivate jwtStrategy
+
+actorResolver -> rolesGuard : Check admin role permissions
+activate rolesGuard
+rolesGuard --> actorResolver : Validate admin role
+deactivate rolesGuard
+
+actorResolver -> actorService : updateActor({_id:String, name:String, ...})
+activate actorService
+
+actorService -> actorRepo : findOneAndUpdateOrThrow({filterQuery:object, updateQuery:object})
+activate actorRepo
+note right of actorRepo
+  filterQuery: { _id: ObjectId }
+  updateQuery: { name, originalName, posterUrl }
+end note
+
+actorRepo -> mongoDB : Find and update actor
+activate mongoDB
+alt actor found
+    mongoDB --> actorRepo : Return updated actor:Actor
+else actor not found
+    mongoDB --> actorRepo : Return null
+end
+deactivate mongoDB
+
+alt actor found and updated
+    actorRepo --> actorService : Return updated actor:ActorType
+else actor not found
+    actorRepo --> actorService : Throw NotFoundException
+end
+deactivate actorRepo
+
+actorService --> actorResolver : Return updated actor:ActorType
+deactivate actorService
+
+actorResolver --> actorForm : Return ActorType
+actorForm --> actorPage : Complete form submission
+deactivate actorForm
+actorPage --> adminUser : Show update confirmation
+deactivate actorPage
+
+@enduml

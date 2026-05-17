@@ -1,0 +1,15 @@
+.git/
+.idea/
+.nx/cache
+.vscode/
+.vercel/
+.expo/
+compodoc/
+node_modules/
+dist/
+.next/
+android/
+ios/
+documentation/
+
+.env*

@@ -1,0 +1,106 @@
+@startuml User Block Flow
+
+skinparam SequenceMessageAlignment center
+skinparam SequenceBoxBackgroundColor white
+skinparam SequenceBoxBorderColor black
+skinparam NoteBackgroundColor lightyellow
+skinparam NoteBorderColor black
+skinparam ParticipantBackgroundColor white
+skinparam ParticipantBorderColor black
+
+title User Block Flow (REST)
+
+actor "Admin User" as adminUser
+participant "userUpdatePage:UserUpdateComponent" as userUpdatePage <<Page>>
+participant "userUpdateForm:UserUpdateForm" as userUpdateForm <<Component>>
+participant "usersController:UsersController" as usersController <<Controller>>
+participant "rolesGuard:RolesGuard" as rolesGuard <<Guard>>
+participant "usersService:UsersService" as usersService <<Service>>
+participant "usersRepo:UsersRepository" as usersRepo <<Repository>>
+database "MongoDB" as mongoDB
+participant "configService:ConfigService" as configService <<Service>>
+
+adminUser -> userUpdatePage : Navigate to user update page
+activate userUpdatePage
+
+userUpdatePage -> userUpdateForm : Display form
+activate userUpdateForm
+
+adminUser -> userUpdateForm : Block user action
+
+userUpdateForm -> usersController : PATCH /users/block/{id}\nBlockUserDto
+activate usersController
+
+usersController -> rolesGuard : Check admin role permissions
+activate rolesGuard
+rolesGuard --> usersController : Validate admin role
+deactivate rolesGuard
+
+usersController -> usersService : blockUser({ actor, userId, data })
+activate usersService
+
+usersService -> usersService : findByIdOrThrow(actor.userId)
+activate usersService #DarkSalmon
+usersService -> usersRepo : findOne(actor._id)
+usersRepo -> mongoDB : Query user
+mongoDB --> usersRepo : User document
+usersRepo --> usersService : Return user or null
+alt User not found
+    usersService --> usersService : Throw UnprocessableEntityException
+end
+usersService --> usersService : Return actor user
+deactivate usersService
+
+alt Actor role is not Admin
+    usersService --> usersController : Throw HttpException\n(UNAUTHORIZED)
+    usersController --> userUpdateForm : HTTP 401 Unauthorized
+else Actor is blocked
+    usersService --> usersController : Throw HttpException\n(UNPROCESSABLE_ENTITY)
+    usersController --> userUpdateForm : HTTP 422 Error Response
+else Actor is Admin and not blocked
+    usersService -> usersService : findByIdOrThrow(userId)
+    activate usersService #DarkSalmon
+    usersService -> usersRepo : findOne(userId)
+    usersRepo -> mongoDB : Query user
+    mongoDB --> usersRepo : User document
+    usersRepo --> usersService : Return user or null
+    alt User not found
+        usersService --> usersService : Throw UnprocessableEntityException
+    end
+    usersService --> usersService : Return target user
+    deactivate usersService
+
+    usersService -> configService : get('auth.adminEmail')
+    configService --> usersService : Return admin email
+
+    alt Target user is root admin
+        usersService --> usersController : Throw HttpException\n(UNPROCESSABLE_ENTITY)
+        usersController --> userUpdateForm : HTTP 422 Error Response
+    else Actor is trying to block themselves
+        usersService --> usersController : Throw HttpException\n(UNPROCESSABLE_ENTITY)
+        usersController --> userUpdateForm : HTTP 422 Error Response
+    else Target user is already blocked
+        usersService --> usersController : Throw HttpException\n(UNPROCESSABLE_ENTITY)
+        usersController --> userUpdateForm : HTTP 422 Error Response
+    else Valid block request
+        usersService -> usersService : Create blockLog with\naction=block, timestamp, actor ID
+
+        usersService -> usersRepo : findOneAndUpdate(userId, updateQuery)
+        activate usersRepo
+        usersRepo -> mongoDB : Update user with isBlocked=true and blockLog
+        mongoDB --> usersRepo : Updated user document
+        usersRepo --> usersService : Return updated user
+        deactivate usersRepo
+
+        usersService --> usersController : Return updated User
+        usersController --> userUpdateForm : HTTP 200 OK\nUserDto
+    end
+end
+
+deactivate usersService
+deactivate usersController
+
+deactivate userUpdateForm
+deactivate userUpdatePage
+
+@enduml

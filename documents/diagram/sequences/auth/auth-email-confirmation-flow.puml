@@ -1,0 +1,63 @@
+@startuml Email Confirmation Flow
+!theme plain
+skinparam sequenceMessageAlign center
+skinparam maxMessageSize 250
+skinparam noteFontSize 12
+skinparam BoxPadding 10
+
+autonumber
+
+title Email Confirmation Flow
+caption Verification process after user registration
+
+actor User <<Actor>>
+participant "Login (Next.js)" as LoginComponent <<Component>>
+participant "AuthController" as AuthController <<Controller>>
+participant "AuthService" as AuthService <<Service>>
+participant "JwtService" as JwtService <<Service>>
+participant "UsersService" as UsersService <<Service>>
+participant "RedisService" as RedisService <<Service>>
+database "MongoDB" as DB <<Database>>
+
+User -> LoginComponent: Click confirmation link
+note right of User: Clicks link from registration email
+LoginComponent -> AuthController: POST /auth/register/confirm (hash)
+AuthController -> AuthService: registerConfirm(hash)
+
+AuthService -> JwtService: verifyAsync hash
+note right: Validates token signature and expiry
+return decoded data or error
+
+alt Invalid hash
+    AuthService --> AuthController: throw UnprocessableEntityException
+    AuthController --> LoginComponent: 422 Invalid hash
+    LoginComponent --> User: Show error message
+else Valid hash
+    AuthService -> UsersService: findById(userId)
+    UsersService -> DB: query
+    return user
+    deactivate UsersService
+
+    AuthService -> RedisService: existsUniqueKey(key)
+    return exists status
+
+    alt Hash doesn't exist or user already confirmed
+        AuthService --> AuthController: throw UnprocessableEntityException
+        AuthController --> LoginComponent: 422 Error message
+        LoginComponent --> User: Show error message
+    else Hash valid and user not confirmed
+        AuthService -> RedisService: del(key)
+        return confirm deleted
+
+        AuthService -> UsersService: update user (emailVerified: true)
+        UsersService -> DB: update
+        return updated
+        deactivate UsersService
+
+        AuthService --> AuthController: void (204 No Content)
+        AuthController --> LoginComponent: 204 No Content
+        LoginComponent --> User: Show success message
+    end
+end
+
+@enduml

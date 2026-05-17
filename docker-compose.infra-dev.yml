@@ -1,0 +1,41 @@
+services:
+    redis-dev:
+        container_name: redis-dev
+        hostname: redis-dev
+        image: docker.io/bitnami/redis:7.2
+        environment:
+            - REDIS_PASSWORD=${REDIS_PASSWORD:-giang}
+            # - REDIS_DISABLE_COMMANDS=FLUSHDB,FLUSHALL
+            - REDIS_PORT_NUMBER=${REDIS_PORT:-9079}
+        ports:
+            - ${REDIS_PORT:-9079}:${REDIS_PORT:-9079}
+        volumes:
+            - 'redis_data:/bitnami/redis/data'
+        networks:
+            - vphim_net
+        restart: unless-stopped
+
+    vp-load-balancer:
+        container_name: vp-load-balancer
+        hostname: vp-load-balancer
+        build:
+            context: ./
+            dockerfile: ./containers/load-balancer/Dockerfile
+        image: lehuygiang28/vp-load-balancer:${COMPOSE_TAG:-latest}
+        env_file:
+            - ./containers/load-balancer/.env
+        ports:
+            - 7000:7000
+        networks:
+            - vphim_net
+        restart: unless-stopped
+
+networks:
+    vphim_net:
+        driver: bridge
+
+volumes:
+    mongodb_data:
+        driver: local
+    redis_data:
+        driver: local

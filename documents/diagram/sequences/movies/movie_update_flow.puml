@@ -1,0 +1,101 @@
+@startuml Movie Update Flow
+
+skinparam SequenceMessageAlignment center
+skinparam SequenceBoxBackgroundColor white
+skinparam SequenceBoxBorderColor black
+skinparam NoteBackgroundColor lightyellow
+skinparam NoteBorderColor black
+skinparam ParticipantBackgroundColor white
+skinparam ParticipantBorderColor black
+
+title Update Movie Flow (GraphQL)
+
+actor "adminUser" as adminUser
+participant "editMoviePage:EditMovie" as editMoviePage <<Page>>
+participant "editMovieForm:EditMovieForm" as editMovieForm <<Component>>
+participant "movieResolver:MovieResolver" as movieResolver <<Resolver>>
+participant "jwtStrategy:JwtGqlStrategy" as jwtStrategy <<Strategy>>
+participant "rolesGuard:RolesGuard" as rolesGuard <<Guard>>
+participant "movieService:MovieService" as movieService <<Service>>
+participant "movieRepo:MovieRepository" as movieRepo <<Repository>>
+participant "searchService:SearchService" as searchService <<Service>>
+participant "elasticsearchService:ElasticsearchService" as elasticsearchService <<Service>>
+database "mongoDB:MongoDB" as mongoDB <<Database>>
+database "elasticsearch:Elasticsearch" as elasticsearch <<Database>>
+
+adminUser -> editMoviePage : Navigate to movie edit page
+activate editMoviePage
+editMoviePage -> editMovieForm : Display form
+activate editMovieForm
+adminUser -> editMovieForm : Fills update fields
+editMovieForm -> movieResolver : Mutation updateMovie(input: UpdateMovieInput)
+activate movieResolver
+movieResolver -> jwtStrategy : Validate JWT token
+activate jwtStrategy
+jwtStrategy --> movieResolver : Return UserJwt
+deactivate jwtStrategy
+movieResolver -> rolesGuard : Check admin role permissions
+activate rolesGuard
+rolesGuard --> movieResolver : Validate admin role
+deactivate rolesGuard
+movieResolver -> movieService : updateMovie({input})
+activate movieService
+alt input.deletedAt == 'delete'
+    movieService -> movieRepo : findOneAndUpdate({ _id }, { deletedAt: new Date() })
+    activate movieRepo
+    movieRepo -> mongoDB : findOneAndUpdate document
+    mongoDB --> movieRepo : updated document
+    deactivate mongoDB
+    movieRepo --> movieService : updated document
+    deactivate movieRepo
+else input.deletedAt == 'restore'
+    movieService -> movieRepo : findOneAndUpdate({ _id }, { deletedAt: null })
+    activate movieRepo
+    movieRepo -> mongoDB : findOneAndUpdate document
+    mongoDB --> movieRepo : updated document
+    deactivate mongoDB
+    movieRepo --> movieService : updated document
+    deactivate movieRepo
+else input.deletedAt == undefined
+    movieService -> movieRepo : findOneAndUpdate({ _id }, { ...updateFields })
+    activate movieRepo
+    movieRepo -> mongoDB : findOneAndUpdate document
+    mongoDB --> movieRepo : updated document
+    deactivate mongoDB
+    movieRepo --> movieService : updated document
+    deactivate movieRepo
+end
+note right of movieRepo
+  MovieSchema.post('findOneAndUpdate') hook triggers
+  after document is updated
+end note
+movieService -> searchService : indexMovie(document)
+activate searchService
+searchService -> movieRepo : findOne(movie._id) with populated fields
+movieRepo --> searchService : fully populated movie document
+searchService -> elasticsearchService : update(index=movies, id=movie._id, body)
+activate elasticsearchService
+elasticsearchService -> elasticsearch : update/index document
+elasticsearch --> elasticsearchService : update result
+elasticsearchService -> elasticsearch : indices.refresh(index=movies)
+elasticsearch --> elasticsearchService : refresh result
+deactivate elasticsearchService
+searchService --> movieService : indexing result
+deactivate searchService
+alt document not found
+    movieService --> movieResolver : Throw NotFoundException
+    movieResolver --> editMovieForm : Error: Movie not found
+    editMovieForm --> editMoviePage : Show error
+    editMoviePage --> adminUser : Show not found error
+else document found
+    movieService --> movieResolver : MovieType instance
+    movieResolver --> editMovieForm : MovieType
+    editMovieForm --> editMoviePage : Complete form submission
+    editMoviePage --> adminUser : Redirect to movie details page
+end
+deactivate movieService
+deactivate movieResolver
+deactivate editMovieForm
+deactivate editMoviePage
+
+@enduml

@@ -1,0 +1,76 @@
+@startuml User Follow Movie Flow
+
+skinparam SequenceMessageAlignment center
+skinparam SequenceBoxBackgroundColor white
+skinparam SequenceBoxBorderColor black
+skinparam NoteBackgroundColor lightyellow
+skinparam NoteBorderColor black
+skinparam ParticipantBackgroundColor white
+skinparam ParticipantBorderColor black
+
+title User Follow Movie Flow (GraphQL)
+
+actor "User" as user
+participant "movieDetailPage:MovieDetailPage" as movieDetailPage <<Page>>
+participant "userFollowMovieButton:UserFollowMovieButton" as userFollowMovieButton <<Component>>
+participant "usersResolver:UsersResolver" as usersResolver <<Resolver>>
+participant "usersService:UsersService" as usersService <<Service>>
+participant "movieService:MovieService" as movieService <<Service>>
+participant "usersRepo:UsersRepository" as usersRepo <<Repository>>
+database "MongoDB" as mongoDB
+
+user -> movieDetailPage : Navigate to movie detail page
+activate movieDetailPage
+
+movieDetailPage -> userFollowMovieButton : Display follow button
+activate userFollowMovieButton
+
+user -> userFollowMovieButton : Click follow movie
+
+userFollowMovieButton -> usersResolver : followMovie(input, actor)
+activate usersResolver
+
+usersResolver -> usersService : followMovie({ actor, movieSlug })
+activate usersService
+
+usersService -> usersService : findByIdOrThrow(actor.userId)
+activate usersService #DarkSalmon
+usersService -> usersRepo : findOne(actor._id)
+usersRepo -> mongoDB : Query user
+mongoDB --> usersRepo : User document
+usersRepo --> usersService : Return user or null
+alt User not found
+    usersService --> usersService : Throw UnprocessableEntityException
+end
+usersService --> usersService : Return actor user
+deactivate usersService
+
+usersService -> movieService : getMovie({ slug: movieSlug }, { populate: false })
+activate movieService
+movieService --> usersService : Return movie or null
+deactivate movieService
+
+alt Movie not found
+    usersService --> usersResolver : Throw HttpException\n(UNPROCESSABLE_ENTITY)
+    usersResolver --> userFollowMovieButton : GraphQL Error Response
+else Movie exists
+    usersService -> usersService : Add movie ID to followMovies list\nwithout duplicates
+
+    usersService -> usersRepo : findOneAndUpdate(actor._id, updateQuery)
+    activate usersRepo
+    usersRepo -> mongoDB : Update user's followMovies
+    mongoDB --> usersRepo : Updated user document
+    usersRepo --> usersService : Return updated user
+    deactivate usersRepo
+
+    usersService --> usersResolver : Return updated User
+    usersResolver --> userFollowMovieButton : GraphQL Response with updated User data
+end
+
+deactivate usersService
+deactivate usersResolver
+
+deactivate userFollowMovieButton
+deactivate movieDetailPage
+
+@enduml

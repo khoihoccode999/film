@@ -1,0 +1,64 @@
+@startuml Public Get Single Movie Flow (GraphQL)
+
+skinparam SequenceMessageAlignment center
+skinparam SequenceBoxBackgroundColor white
+skinparam SequenceBoxBorderColor black
+skinparam NoteBackgroundColor lightyellow
+skinparam NoteBorderColor black
+skinparam ParticipantBackgroundColor white
+skinparam ParticipantBorderColor black
+
+title Public Get Single Movie Flow (GraphQL)
+
+actor "user" as user
+participant "moviePage:MoviePage" as moviePage <<Page>>
+participant "movieComponent:MovieComponent" as movieComponent <<Component>>
+participant "movieResolver:MovieResolver" as movieResolver <<Resolver>>
+participant "movieService:MovieService" as movieService <<Service>>
+participant "movieRepo:MovieRepository" as movieRepo <<Repository>>
+database "mongoDB:MongoDB" as mongoDB <<Database>>
+
+user -> moviePage : Navigate to movie page
+activate moviePage
+moviePage -> movieComponent : Display movie details
+activate movieComponent
+user -> movieComponent : Initiates get single movie
+movieComponent -> movieResolver : Query movie(input)
+activate movieResolver
+movieResolver -> movieService : getMovie(input)
+activate movieService
+alt input has _id
+    movieService -> movieRepo : findOne({ _id })
+else input has slug
+    movieService -> movieRepo : findOne({ slug })
+end
+activate movieRepo
+note right of movieRepo
+  Populate actors, categories,
+  countries & directors
+end note
+movieRepo -> mongoDB : findOne query with populate
+mongoDB --> movieRepo : movie document with populated fields
+deactivate mongoDB
+movieRepo --> movieService : movie document with populated fields
+deactivate movieRepo
+alt document not found
+    movieService --> movieResolver : Throw NotFoundException
+    movieResolver --> movieComponent : Error: Movie not found
+    movieComponent --> moviePage : Show error
+    moviePage --> user : Show not found error
+else document found
+    movieService --> movieResolver : MovieType instance
+    movieResolver --> movieComponent : MovieType
+    movieComponent --> moviePage : Show movie details
+    moviePage --> user : Display movie details
+    note right of movieService
+      Public cannot see deleted or sensitive movies
+    end note
+end
+deactivate movieService
+deactivate movieResolver
+deactivate movieComponent
+deactivate moviePage
+
+@enduml

@@ -1,0 +1,56 @@
+@startuml User Update Flow
+
+skinparam SequenceMessageAlignment center
+skinparam SequenceBoxBackgroundColor white
+skinparam SequenceBoxBorderColor black
+skinparam NoteBackgroundColor lightyellow
+skinparam NoteBorderColor black
+skinparam ParticipantBackgroundColor white
+skinparam ParticipantBorderColor black
+
+title User Update Flow (REST)
+
+actor "User" as user
+participant "userProfilePage:UserProfilePage" as userProfilePage <<Page>>
+participant "userProfileForm:UserProfileForm" as userProfileForm <<Component>>
+participant "usersController:UsersController" as usersController <<Controller>>
+participant "usersService:UsersService" as usersService <<Service>>
+participant "usersRepo:UsersRepository" as usersRepo <<Repository>>
+database "MongoDB" as mongoDB
+
+user -> userProfilePage : Navigate to profile page
+activate userProfilePage
+
+userProfilePage -> userProfileForm : Display profile form
+activate userProfileForm
+
+user -> userProfileForm : Update account info
+
+userProfileForm -> usersController : PATCH /users/me\nUpdateMeDto
+activate usersController
+
+usersController -> usersService : updateMe(userId, updateData)
+activate usersService
+
+usersService -> usersRepo : findOneAndUpdate(userId, updateQuery)
+activate usersRepo
+usersRepo -> mongoDB : Update user document
+mongoDB --> usersRepo : Updated user document
+usersRepo --> usersService : Return updated user or null
+deactivate usersRepo
+
+alt User not found
+    usersService --> usersController : Return null
+    usersController --> userProfileForm : HTTP 404 Not Found
+else User updated
+    usersService --> usersController : Return updated User
+    usersController --> userProfileForm : HTTP 200 OK\nUserDto
+end
+
+deactivate usersService
+deactivate usersController
+
+deactivate userProfileForm
+deactivate userProfilePage
+
+@enduml

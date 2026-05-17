@@ -1,0 +1,139 @@
+@startuml Social Login Flow
+!theme plain
+skinparam sequenceMessageAlign center
+skinparam maxMessageSize 250
+skinparam noteFontSize 12
+skinparam BoxPadding 10
+
+autonumber
+
+title Social Login Flow
+caption Authentication using Google and GitHub OAuth providers
+
+actor User <<Actor>>
+participant "Login (Next.js)" as LoginComponent <<Component>>
+participant "AuthController" as AuthController <<Controller>>
+participant "AuthService" as AuthService <<Service>>
+participant "UsersService" as UsersService <<Service>>
+participant "JwtService" as JwtService <<Service>>
+database "MongoDB" as DB <<Database>>
+participant "GoogleOAuth" as GoogleOAuth <<OAuthProvider>>
+participant "GitHubOAuth" as GitHubOAuth <<OAuthProvider>>
+
+' Google Login Flow
+group Google Login
+    User -> LoginComponent: Click Google login
+    note right: User selects Google sign-in option
+
+    LoginComponent -> GoogleOAuth: Authenticate
+    note right: OAuth2 authentication flow
+    return idToken
+
+    LoginComponent -> AuthController: POST /auth/login/google (idToken)
+    AuthController -> AuthService: validateLoginGoogle(data)
+
+    AuthService -> GoogleOAuth: verifyIdToken
+    note right: Verify token with Google OAuth API
+    return user data or error
+
+    alt Invalid token
+        AuthService --> AuthController: throw UnauthorizedException
+        AuthController --> LoginComponent: 401 Google login failed
+        LoginComponent --> User: Show error message
+    else Valid token
+        AuthService -> UsersService: findByEmail(email)
+        UsersService -> DB: query
+        return result
+        deactivate UsersService
+
+        alt User not found
+            AuthService -> UsersService: create new user
+            note right: Auto-registration with Google profile
+            UsersService -> DB: insert
+            return user created
+            deactivate UsersService
+        end
+
+        alt Email not verified
+            AuthService -> UsersService: update user (emailVerified: true)
+            note right: Trust Google verified emails
+            UsersService -> DB: update
+            return updated
+            deactivate UsersService
+        end
+
+        AuthService -> AuthService: generateTokens(user)
+
+        AuthService -> JwtService: signAsync access token
+        return accessToken
+
+        AuthService -> JwtService: signAsync refresh token
+        return refreshToken
+
+        AuthService --> AuthController: LoginResponseDto
+        AuthController --> LoginComponent: 200 tokens + user
+        LoginComponent --> User: Login successful
+    end
+end
+
+|||
+note across: Both social providers follow the same pattern with different token verification
+|||
+
+' GitHub Login Flow
+group GitHub Login
+    User -> LoginComponent: Click GitHub login
+    note right: User selects GitHub sign-in option
+
+    LoginComponent -> GitHubOAuth: Authenticate
+    note right: OAuth authorization code flow
+    return accessToken
+
+    LoginComponent -> AuthController: POST /auth/login/github (accessToken)
+    AuthController -> AuthService: validateLoginGithub(data)
+
+    AuthService -> GitHubOAuth: GET /user
+    note right: Call GitHub REST API with token
+    return user data or error
+
+    alt Invalid token
+        AuthService --> AuthController: throw UnauthorizedException
+        AuthController --> LoginComponent: 401 GitHub login failed
+        LoginComponent --> User: Show error message
+    else Valid token
+        AuthService -> UsersService: findByEmail(email)
+        UsersService -> DB: query
+        return result
+        deactivate UsersService
+
+        alt User not found
+            AuthService -> UsersService: create new user
+            note right: Auto-registration with GitHub profile
+            UsersService -> DB: insert
+            return user created
+            deactivate UsersService
+        end
+
+        alt Email not verified
+            AuthService -> UsersService: update user (emailVerified: true)
+            note right: Trust GitHub verified emails
+            UsersService -> DB: update
+            return updated
+            deactivate UsersService
+        end
+
+        AuthService -> AuthService: generateTokens(user)
+
+        AuthService -> JwtService: signAsync access token
+        return accessToken
+
+        AuthService -> JwtService: signAsync refresh token
+        return refreshToken
+
+        AuthService --> AuthController: LoginResponseDto
+        AuthController --> LoginComponent: 200 tokens + user
+        LoginComponent --> User: Login successful
+    end
+end
+
+@enduml

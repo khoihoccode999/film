@@ -1,0 +1,46 @@
+name: NX-CI
+
+# Disable nx ci by setting branch to others than main
+
+on:
+    push:
+        branches:
+            # - main
+            - disable-nx-ci
+
+permissions:
+    actions: read
+    contents: read
+
+jobs:
+    main:
+        runs-on: ubuntu-22.04
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            # Connect your workspace on nx.app and uncomment this to enable task distribution.
+            # The "--stop-agents-after" is optional, but allows idle agents to shut down once the "build" targets have been requested
+            # - run: npx nx-cloud start-ci-run --distribute-on="5 linux-medium-js" --stop-agents-after="build"
+
+            # Cache node_modules
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 20
+                  cache: 'yarn'
+
+            - run: yarn install --immutable
+            - uses: nrwl/nx-set-shas@v4
+
+            # Create .env file
+            - name: Create .env file
+              run: |
+                  echo "NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}" >> apps/fe/.env
+                  echo "NEXT_PUBLIC_IMAGES_URL=${{ secrets.NEXT_PUBLIC_IMAGES_URL }}" >> apps/fe/.env
+                  echo "REVALIDATE_API_KEY=${{ secrets.REVALIDATE_API_KEY }}" >> apps/fe/.env
+              shell: bash
+
+            # Prepend any command with "nx-cloud record --" to record its logs to Nx Cloud
+            # - run: npx nx-cloud record -- echo Hello World
+            - run: npx nx affected -t lint build --exclude=mobile

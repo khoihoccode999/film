@@ -1,0 +1,60 @@
+@startuml Registration Flow
+!theme plain
+skinparam sequenceMessageAlign center
+skinparam maxMessageSize 250
+skinparam noteFontSize 12
+skinparam BoxPadding 10
+
+autonumber
+
+title Registration Flow
+caption User registration with email confirmation
+
+actor User <<Actor>>
+participant "Login (Next.js)" as LoginComponent <<Component>>
+participant "AuthController" as AuthController <<Controller>>
+participant "AuthService" as AuthService <<Service>>
+participant "JwtService" as JwtService <<Service>>
+participant "UsersService" as UsersService <<Service>>
+participant "RedisService" as RedisService <<Service>>
+participant "MailQueue" as MailQueue <<Queue>>
+database "MongoDB" as DB <<Database>>
+
+User -> LoginComponent: Submit registration form
+note right of User: Provides email and accepts terms
+LoginComponent -> AuthController: POST /auth/register (email, returnUrl)
+AuthController -> AuthService: register(dto)
+note right of AuthService: Normalizes email (lowercase, trim)
+
+AuthService -> UsersService: findByEmail(email)
+UsersService -> DB: query
+return result
+deactivate DB
+deactivate UsersService
+
+alt User exists
+    AuthService --> AuthController: throw UnprocessableEntityException
+    AuthController --> LoginComponent: 422 Email already exists
+    LoginComponent --> User: Show error message
+else New user
+    AuthService -> UsersService: create(userData)
+    UsersService -> DB: insert
+    return user created
+    deactivate UsersService
+
+    AuthService -> JwtService: signAsync confirmation token
+    return hash
+
+    AuthService -> RedisService: set hash with expiry
+    return confirm stored
+
+    AuthService -> MailQueue: add 'sendEmailRegister' to queue
+    note right: Asynchronous operation
+    MailQueue --> AuthService: email queued
+
+    AuthService --> AuthController: void (204 No Content)
+    AuthController --> LoginComponent: 204 No Content
+    LoginComponent --> User: Show confirmation message
+end
+
+@enduml

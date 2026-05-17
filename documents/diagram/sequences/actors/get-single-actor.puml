@@ -1,0 +1,79 @@
+@startuml Get Single Actor Flow
+
+skinparam SequenceMessageAlignment center
+skinparam SequenceBoxBackgroundColor white
+skinparam SequenceBoxBorderColor black
+skinparam NoteBackgroundColor lightyellow
+skinparam NoteBorderColor black
+skinparam ParticipantBackgroundColor white
+skinparam ParticipantBorderColor black
+
+title Get Single Actor Flow (GraphQL)
+
+actor "Client" as appClient
+participant "detailUI:ActorDetailPage" as detailUI <<Page>>
+participant "actorResolver:ActorResolver" as actorResolver <<Resolver>>
+participant "actorService:ActorService" as actorService <<Service>>
+participant "actorRepo:ActorRepository" as actorRepo <<Repository>>
+database "MongoDB" as mongoDB
+
+appClient -> detailUI : View actor details
+activate detailUI
+detailUI -> actorResolver : Query actor(input: GetActorInput)
+activate actorResolver
+
+actorResolver -> actorService : getActor({_id:String, slug:String})
+activate actorService
+
+alt _id parameter provided
+    actorService -> actorRepo : findOneOrThrow({filterQuery: {_id:ObjectId}})
+    activate actorRepo
+
+    actorRepo -> mongoDB : Find actor by _id
+    activate mongoDB
+    mongoDB --> actorRepo : Return actor:Actor or null
+    deactivate mongoDB
+
+    alt actor found
+        actorRepo --> actorService : Return actor:ActorType
+    else actor not found
+        actorRepo --> actorService : Throw NotFoundException
+    end
+
+    deactivate actorRepo
+else slug parameter provided
+    actorService -> actorRepo : findOneOrThrow({filterQuery: {slug:String}})
+    activate actorRepo
+
+    actorRepo -> mongoDB : Find actor by slug
+    activate mongoDB
+    mongoDB --> actorRepo : Return actor:Actor or null
+    deactivate mongoDB
+
+    alt actor found
+        actorRepo --> actorService : Return actor:ActorType
+    else actor not found
+        actorRepo --> actorService : Throw NotFoundException
+    end
+
+    deactivate actorRepo
+else no parameters provided
+    actorService --> actorResolver : Throw HttpException(UNPROCESSABLE_ENTITY)
+end
+
+alt success
+    actorService --> actorResolver : Return actor:ActorType
+    actorResolver --> detailUI : Render actor details
+    detailUI --> appClient : Display actor information
+else error
+    actorService --> actorResolver : Throw exception
+    actorResolver --> detailUI : Show error state
+    detailUI --> appClient : Display error message
+end
+
+deactivate actorService
+deactivate actorResolver
+deactivate feComponent
+deactivate detailUI
+
+@enduml

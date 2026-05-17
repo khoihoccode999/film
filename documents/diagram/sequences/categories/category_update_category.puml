@@ -1,0 +1,71 @@
+@startuml Update Category Flow
+
+skinparam SequenceMessageAlignment center
+skinparam SequenceBoxBackgroundColor white
+skinparam SequenceBoxBorderColor black
+skinparam NoteBackgroundColor lightyellow
+skinparam NoteBorderColor black
+skinparam ParticipantBackgroundColor white
+skinparam ParticipantBorderColor black
+
+title Update Category Flow (GraphQL)
+
+actor "Admin User" as adminUser
+participant "categoryPage:CategoryPage" as categoryPage <<Page>>
+participant "categoryForm:CategoryForm" as categoryForm <<Component>>
+participant "categoryResolver:CategoryResolver" as categoryResolver <<Resolver>>
+participant "jwtStrategy:JwtGqlStrategy" as jwtStrategy <<Strategy>>
+participant "rolesGuard:RolesGuard" as rolesGuard <<Guard>>
+participant "categoryService:CategoryService" as categoryService <<Service>>
+participant "categoryRepo:CategoryRepository" as categoryRepo <<Repository>>
+database "mongoDB" as mongoDB
+
+adminUser -> categoryPage : Navigate to category update page
+activate categoryPage
+
+categoryPage -> categoryForm : Display form
+activate categoryForm
+
+adminUser -> categoryForm : Fills update fields
+
+categoryForm -> categoryResolver : Mutation updateCategory(input: UpdateCategoryInput)
+activate categoryResolver
+
+categoryResolver -> jwtStrategy : Validate JWT token
+activate jwtStrategy
+jwtStrategy --> categoryResolver : Return UserJwt
+deactivate jwtStrategy
+
+categoryResolver -> rolesGuard : Check admin role permissions
+activate rolesGuard
+rolesGuard --> categoryResolver : Validate admin role
+deactivate rolesGuard
+
+categoryResolver -> categoryService : updateCategory({id, ...})
+activate categoryService
+
+categoryService -> categoryRepo : findOneAndUpdateOrThrow(filterQuery, updateQuery)
+activate categoryRepo
+categoryRepo -> mongoDB : findOneAndUpdate(query)
+activate mongoDB
+mongoDB --> categoryRepo : Return updated category or null
+deactivate mongoDB
+
+alt category found and updated
+    categoryRepo --> categoryService : Return updated category
+else category not found
+    categoryRepo --> categoryService : Throw NotFoundException
+end
+deactivate categoryRepo
+
+categoryService --> categoryResolver : Return updated category (CategoryType)
+categoryResolver --> categoryForm : Return CategoryType
+categoryForm --> categoryPage : Complete form submission
+categoryPage --> adminUser : Show update result
+
+deactivate categoryService
+deactivate categoryResolver
+deactivate categoryForm
+deactivate categoryPage
+
+@enduml

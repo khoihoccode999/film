@@ -1,0 +1,71 @@
+@startuml Update Region Flow
+
+skinparam SequenceMessageAlignment center
+skinparam SequenceBoxBackgroundColor white
+skinparam SequenceBoxBorderColor black
+skinparam NoteBackgroundColor lightyellow
+skinparam NoteBorderColor black
+skinparam ParticipantBackgroundColor white
+skinparam ParticipantBorderColor black
+
+title Update Region Flow (GraphQL)
+
+actor "Admin User" as adminUser
+participant "regionPage:RegionPage" as regionPage <<Page>>
+participant "regionForm:RegionForm" as regionForm <<Component>>
+participant "regionResolver:RegionResolver" as regionResolver <<Resolver>>
+participant "jwtStrategy:JwtGqlStrategy" as jwtStrategy <<Strategy>>
+participant "rolesGuard:RolesGuard" as rolesGuard <<Guard>>
+participant "regionService:RegionService" as regionService <<Service>>
+participant "regionRepo:RegionRepository" as regionRepo <<Repository>>
+database "MongoDB" as mongoDB
+
+adminUser -> regionPage : Navigate to region update page
+activate regionPage
+
+regionPage -> regionForm : Display form
+activate regionForm
+
+adminUser -> regionForm : Fills update fields
+
+regionForm -> regionResolver : Mutation updateRegion(input: UpdateRegionInput)
+activate regionResolver
+
+regionResolver -> jwtStrategy : Validate JWT token
+activate jwtStrategy
+jwtStrategy --> regionResolver : Return UserJwt
+deactivate jwtStrategy
+
+regionResolver -> rolesGuard : Check admin role permissions
+activate rolesGuard
+rolesGuard --> regionResolver : Validate admin role
+deactivate rolesGuard
+
+regionResolver -> regionService : updateRegion({id, ...})
+activate regionService
+
+regionService -> regionRepo : findOneAndUpdateOrThrow(filterQuery, updateQuery)
+activate regionRepo
+regionRepo -> mongoDB : Find and update region
+activate mongoDB
+mongoDB --> regionRepo : Return updated region or null
+deactivate mongoDB
+
+alt region found and updated
+    regionRepo --> regionService : Return updated region
+else region not found
+    regionRepo --> regionService : Throw NotFoundException
+end
+deactivate regionRepo
+
+regionService --> regionResolver : Return updated region
+regionResolver --> regionForm : Return updated region
+regionForm --> regionPage : Complete form submission
+regionPage --> adminUser : Show update result
+
+deactivate regionService
+deactivate regionResolver
+deactivate regionForm
+deactivate regionPage
+
+@enduml

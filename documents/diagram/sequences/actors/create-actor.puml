@@ -1,0 +1,88 @@
+@startuml Create Actor Flow
+
+skinparam SequenceMessageAlignment center
+skinparam SequenceBoxBackgroundColor white
+skinparam SequenceBoxBorderColor black
+skinparam NoteBackgroundColor lightyellow
+skinparam NoteBorderColor black
+skinparam ParticipantBackgroundColor white
+skinparam ParticipantBorderColor black
+
+title Create Actor Flow (GraphQL)
+
+actor "Admin User" as adminUser
+participant "actorPage:CreateActor" as actorPage <<Page>>
+participant "actorForm:ActorForm" as actorForm <<Component>>
+participant "actorResolver:ActorResolver" as actorResolver <<Resolver>>
+participant "jwtStrategy:JwtGqlStrategy" as jwtStrategy <<Strategy>>
+participant "rolesGuard:RolesGuard" as rolesGuard <<Guard>>
+participant "actorService:ActorService" as actorService <<Service>>
+participant "actorRepo:ActorRepository" as actorRepo <<Repository>>
+database "MongoDB" as mongoDB
+
+adminUser -> actorPage : Navigate to actor creation page
+activate actorPage
+
+actorPage -> actorForm : Display form
+activate actorForm
+
+adminUser -> actorForm : Fills name, originalName, slug, posterUrl
+
+actorForm -> actorResolver : Mutation createActor(input: CreateActorInput)
+activate actorResolver
+
+actorResolver -> jwtStrategy : Validate JWT token
+activate jwtStrategy
+jwtStrategy --> actorResolver : Return UserJwt
+deactivate jwtStrategy
+
+actorResolver -> rolesGuard : Check admin role permissions
+activate rolesGuard
+rolesGuard --> actorResolver : Validate admin role
+deactivate rolesGuard
+
+actorResolver -> actorService : createActor({name, slug, ...})
+activate actorService
+
+actorService -> actorRepo : findOne({filterQuery: {slug}})
+activate actorRepo
+actorRepo -> mongoDB : Find actor by slug
+activate mongoDB
+mongoDB --> actorRepo : Return actor or null
+deactivate mongoDB
+actorRepo --> actorService : Return existing actor or null
+deactivate actorRepo
+
+alt slug already exists
+    actorService --> actorResolver : Throw BadRequestException\n(Slug already exists)
+    actorResolver --> actorForm : Return error
+    actorForm --> actorPage : Show error
+    actorPage --> adminUser : Show slug already exists error
+else slug is unique
+    note right of actorService
+        Process slug by removing diacritics
+        and tones using removeDiacritics()
+        and removeTone()
+    end note
+
+    actorService -> actorRepo : create({document: {...}})
+    activate actorRepo
+    actorRepo -> mongoDB : Insert new actor document
+    activate mongoDB
+    mongoDB --> actorRepo : Return created actor
+    deactivate mongoDB
+    actorRepo --> actorService : Return created actor
+    deactivate actorRepo
+
+    actorService --> actorResolver : Return new actor (ActorType)
+    actorResolver --> actorForm : Return ActorType
+    actorForm --> actorPage : Complete form submission
+    actorPage --> adminUser : Redirect to actor details page
+end
+
+deactivate actorService
+deactivate actorResolver
+deactivate actorForm
+deactivate actorPage
+
+@enduml

@@ -1,0 +1,67 @@
+@startuml Get Single Category Flow
+
+skinparam SequenceMessageAlignment center
+skinparam SequenceBoxBackgroundColor white
+skinparam SequenceBoxBorderColor black
+skinparam NoteBackgroundColor lightyellow
+skinparam NoteBorderColor black
+skinparam ParticipantBackgroundColor white
+skinparam ParticipantBorderColor black
+
+title Get Single Category Flow (GraphQL)
+
+actor "User" as user
+participant "categoryPage:CategoryPage" as categoryPage <<Page>>
+participant "categoryResolver:CategoryResolver" as categoryResolver <<Resolver>>
+participant "categoryService:CategoryService" as categoryService <<Service>>
+participant "categoryRepo:CategoryRepository" as categoryRepo <<Repository>>
+database "mongoDB" as mongoDB
+
+user -> categoryPage : Navigate to category details page
+activate categoryPage
+
+categoryPage -> categoryResolver : Query category(input: GetCategoryInput)
+activate categoryResolver
+
+categoryResolver -> categoryService : getCategory(input)
+activate categoryService
+
+alt input contains _id
+    categoryService -> categoryRepo : findOneOrThrow({filterQuery: {_id}})
+    activate categoryRepo
+    categoryRepo -> mongoDB : findOne(query)
+    activate mongoDB
+    mongoDB --> categoryRepo : Return category or null
+    deactivate mongoDB
+    alt category found
+        categoryRepo --> categoryService : Return category
+    else not found
+        categoryRepo --> categoryService : Throw NotFoundException
+    end
+    deactivate categoryRepo
+else input contains slug
+    categoryService -> categoryRepo : findOneOrThrow({filterQuery: {slug}})
+    activate categoryRepo
+    categoryRepo -> mongoDB : findOne(query)
+    activate mongoDB
+    mongoDB --> categoryRepo : Return category or null
+    deactivate mongoDB
+    alt category found
+        categoryRepo --> categoryService : Return category
+    else not found
+        categoryRepo --> categoryService : Throw NotFoundException
+    end
+    deactivate categoryRepo
+else no valid input
+    categoryService --> categoryResolver : Throw HttpException(UNPROCESSABLE_ENTITY)
+end
+
+categoryService --> categoryResolver : Return category (CategoryType)
+categoryResolver --> categoryPage : Return CategoryType
+categoryPage --> user : Show category details
+
+deactivate categoryService
+deactivate categoryResolver
+deactivate categoryPage
+
+@enduml

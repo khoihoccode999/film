@@ -1,0 +1,75 @@
+@startuml GraphQL Get Actors Flow
+
+skinparam SequenceMessageAlignment center
+skinparam SequenceBoxBackgroundColor white
+skinparam SequenceBoxBorderColor black
+skinparam NoteBackgroundColor lightyellow
+skinparam NoteBorderColor black
+skinparam ParticipantBackgroundColor white
+skinparam ParticipantBorderColor black
+
+title GraphQL Get Actors Flow
+
+actor "Client" as appClient
+participant "actorsUI:ActorsPage" as actorsUI <<Page>>
+participant "actorResolver:ActorResolver" as actorResolver <<Resolver>>
+participant "actorService:ActorService" as actorService <<Service>>
+participant "redisService:RedisService" as redisService <<Service>>
+participant "actorRepo:ActorRepository" as actorRepo <<Repository>>
+database "MongoDB" as mongoDB
+
+appClient -> actorsUI : Browse actors page
+activate actorsUI
+actorsUI -> actorResolver : Query actors(input: GetActorsInput)
+activate actorResolver
+
+actorResolver -> actorService : getActors(input:GetActorsInput)
+activate actorService
+
+actorService -> redisService : get(cacheKey:String)
+activate redisService
+note right of redisService
+  Cache key: CACHED:ACTORS:{sortedStringify(input)}
+end note
+redisService --> actorService : Return cache result:GetActorsOutput or null
+deactivate redisService
+
+alt cache hit
+    note right of actorService
+      Convert Date strings back to Date objects
+    end note
+    actorService --> actorResolver : Return cached data:GetActorsOutput with Date objects converted
+else cache miss
+    actorService -> actorRepo : find({filterQuery:object, query:GetActorsInput})
+    activate actorRepo
+    actorRepo -> mongoDB : Find actors matching filters
+    activate mongoDB
+    mongoDB --> actorRepo : Return actors:Actor[]
+    deactivate mongoDB
+    actorRepo --> actorService : Return actors:Actor[]
+    deactivate actorRepo
+
+    actorService -> actorRepo : count(filters:object)
+    activate actorRepo
+    actorRepo -> mongoDB : Count actors matching filters
+    activate mongoDB
+    mongoDB --> actorRepo : Return count:number
+    deactivate mongoDB
+    actorRepo --> actorService : Return count:number
+    deactivate actorRepo
+
+    actorService -> redisService : set(cacheKey:String, result:GetActorsOutput, 1000 * 10)
+    activate redisService
+    redisService --> actorService : Cache set
+    deactivate redisService
+
+    actorService --> actorResolver : Return { data:Actor[], total:number, count:number }
+end
+
+actorResolver --> actorsUI : Render actors list
+deactivate actorService
+deactivate actorResolver
+actorsUI --> appClient : Display actors with pagination
+deactivate actorsUI
+
+@enduml

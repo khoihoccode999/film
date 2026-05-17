@@ -1,0 +1,70 @@
+@startuml Get Regions Flow
+
+skinparam SequenceMessageAlignment center
+skinparam SequenceBoxBackgroundColor white
+skinparam SequenceBoxBorderColor black
+skinparam NoteBackgroundColor lightyellow
+skinparam NoteBorderColor black
+skinparam ParticipantBackgroundColor white
+skinparam ParticipantBorderColor black
+
+title Get Regions Flow (GraphQL)
+
+actor "User" as user
+participant "regionPage:RegionPage" as regionPage <<Page>>
+participant "regionResolver:RegionResolver" as regionResolver <<Resolver>>
+participant "regionService:RegionService" as regionService <<Service>>
+participant "redisService:RedisService" as redisService <<Service>>
+participant "regionRepo:RegionRepository" as regionRepo <<Repository>>
+database "MongoDB" as mongoDB
+
+user -> regionPage : Initiates get regions
+activate regionPage
+
+regionPage -> regionResolver : Query regions(input)
+activate regionResolver
+regionResolver -> regionService : getRegions(input)
+activate regionService
+
+regionService -> redisService : get(cacheKey)
+activate redisService
+redisService --> regionService : Return cached data (if exists)
+deactivate redisService
+
+alt data from cache exists
+    regionService --> regionResolver : Return cached data
+else no cached data
+    regionService -> regionRepo : find(filterQuery, query)
+    activate regionRepo
+    regionRepo -> mongoDB : Find regions
+    activate mongoDB
+    mongoDB --> regionRepo : Return regions
+    deactivate mongoDB
+    regionRepo --> regionService : Return regions
+    deactivate regionRepo
+
+    regionService -> regionRepo : count(filterQuery)
+    activate regionRepo
+    regionRepo -> mongoDB : Count regions
+    activate mongoDB
+    mongoDB --> regionRepo : Return count
+    deactivate mongoDB
+    regionRepo --> regionService : Return count
+    deactivate regionRepo
+
+    regionService -> redisService : set(cacheKey, result, expiry)
+    activate redisService
+    redisService --> regionService : Confirm cache set
+    deactivate redisService
+
+    regionService --> regionResolver : Return result {data, total, count}
+end
+
+regionResolver --> regionPage : Return regions
+regionPage --> user : Show regions list
+
+deactivate regionService
+deactivate regionResolver
+deactivate regionPage
+
+@enduml

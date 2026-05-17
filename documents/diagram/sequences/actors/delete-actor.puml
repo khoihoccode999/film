@@ -1,0 +1,70 @@
+@startuml Delete Actor Flow
+
+skinparam SequenceMessageAlignment center
+skinparam SequenceBoxBackgroundColor white
+skinparam SequenceBoxBorderColor black
+skinparam NoteBackgroundColor lightyellow
+skinparam NoteBorderColor black
+skinparam ParticipantBackgroundColor white
+skinparam ParticipantBorderColor black
+
+title Delete Actor Flow (GraphQL)
+
+actor "Admin User" as adminUser
+participant "adminUI:ActorManagementPage" as adminUI <<Page>>
+participant "actorListItem:ActorListItem" as actorListItem <<Component>>
+participant "actorResolver:ActorResolver" as actorResolver <<Resolver>>
+participant "jwtStrategy:JwtGqlStrategy" as jwtStrategy <<Strategy>>
+participant "rolesGuard:RolesGuard" as rolesGuard <<Guard>>
+participant "actorService:ActorService" as actorService <<Service>>
+participant "actorRepo:ActorRepository" as actorRepo <<Repository>>
+database "MongoDB" as mongoDB
+
+adminUser -> adminUI : Navigate to actor management
+activate adminUI
+
+adminUI -> actorListItem : Display actor list
+activate actorListItem
+
+adminUser -> actorListItem : Clicks delete button for actor
+actorListItem -> adminUser : Show confirmation dialog
+
+adminUser -> actorListItem : Confirm deletion
+actorListItem -> actorResolver : Mutation deleteActor(input: DeleteActorInput)
+activate actorResolver
+
+actorResolver -> jwtStrategy : Validate JWT token
+activate jwtStrategy
+jwtStrategy --> actorResolver : Return UserJwt
+deactivate jwtStrategy
+
+actorResolver -> rolesGuard : Check admin role permissions
+activate rolesGuard
+rolesGuard --> actorResolver : Validate admin role
+deactivate rolesGuard
+
+actorResolver -> actorService : deleteActor({_id: String})
+activate actorService
+
+actorService -> actorRepo : deleteOne({_id: ObjectId})
+activate actorRepo
+actorRepo -> mongoDB : Delete actor by _id
+activate mongoDB
+mongoDB --> actorRepo : Return deletion result
+deactivate mongoDB
+actorRepo --> actorService : Return result
+deactivate actorRepo
+
+actorService --> actorResolver : Return 1 (success count)
+deactivate actorService
+
+actorResolver --> actorListItem : Return success
+deactivate actorResolver
+
+actorListItem -> adminUI : Update actor list
+actorListItem --> adminUser : Show deletion confirmation
+
+deactivate actorListItem
+deactivate adminUI
+
+@enduml
